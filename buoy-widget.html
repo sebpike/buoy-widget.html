@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+font-family:system-ui;
+margin:8px;
+background:white;
+}
+
+.container{
+max-width:520px;
+margin:auto;
+}
+
+select{
+width:100%;
+padding:10px;
+font-size:16px;
+margin-bottom:10px;
+border-radius:6px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:6px;
+background:#f5f5f5;
+padding:12px;
+border-radius:10px;
+margin-bottom:12px;
+}
+
+.label{
+color:#666;
+font-size:13px;
+}
+
+.value{
+text-align:right;
+font-weight:600;
+}
+
+.updated{
+font-size:12px;
+color:#888;
+text-align:right;
+margin-top:4px;
+margin-bottom:8px;
+}
+
+.chart-container{
+position:relative;
+margin-top:10px;
+}
+
+.chart-container canvas{
+cursor:pointer;
+}
+
+.fullscreen{
+position:fixed;
+top:0;
+left:0;
+width:100vw;
+height:100vh;
+background:white;
+z-index:9999;
+padding:10px;
+}
+
+.fullscreen canvas{
+height:90vh !important;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<select id="buoySelect">
+<option value="M5">M5 (Default)</option>
+<option value="M2">M2</option>
+<option value="M3">M3</option>
+<option value="M4">M4</option>
+<option value="M6">M6</option>
+</select>
+
+<div class="grid">
+
+<div class="label">Sig Wave Height</div>
+<div class="value" id="hs">--</div>
+
+<div class="label">Sig Wave Period</div>
+<div class="value" id="tp">--</div>
+
+<div class="label">Max Wave Height</div>
+<div class="value" id="hmax">--</div>
+
+<div class="label">Max Wave Period</div>
+<div class="value" id="tmax">--</div>
+
+<div class="label">Swell Direction</div>
+<div class="value" id="dir">--</div>
+
+</div>
+
+<div class="updated" id="updated"></div>
+
+<div class="chart-container" id="heightContainer">
+<canvas id="heightChart"></canvas>
+</div>
+
+<div class="chart-container" id="periodContainer">
+<canvas id="periodChart"></canvas>
+</div>
+
+</div>
+
+<script>
+
+const buoySelect = document.getElementById("buoySelect")
+
+let heightChart
+let periodChart
+
+async function loadData(){
+
+const buoy = buoySelect.value
+
+const url =
+`https://erddap.marine.ie/erddap/tabledap/IWBNetwork.json?
+station_id,time,WaveHeight,WavePeriod,MaxWaveHeight,MaxWavePeriod,PeakDirection
+&station_id="${buoy}"
+&time>=now-36hours`
+
+try{
+
+const response = await fetch(url)
+const data = await response.json()
+
+localStorage.setItem("buoyCache", JSON.stringify(data))
+
+processData(data)
+
+}
+
+catch(err){
+
+const cached = localStorage.getItem("buoyCache")
+
+if(cached){
+
+console.log("Using cached buoy data")
+
+processData(JSON.parse(cached))
+
+}
+
+else{
+
+console.error("No data available")
+
+}
+
+}
+
+}
+
+function processData(data){
+
+const rows = data.table.rows
+
+if(rows.length===0) return
+
+const time = rows.map(r=>r[1])
+const height = rows.map(r=>r[2])
+const period = rows.map(r=>r[3])
+
+const latest = rows[rows.length-1]
+
+document.getElementById("hs").innerText =
+latest[2].toFixed(2)+" m"
+
+document.getElementById("tp").innerText =
+latest[3].toFixed(1)+" s"
+
+document.getElementById("hmax").innerText =
+latest[4].toFixed(2)+" m"
+
+document.getElementById("tmax").innerText =
+latest[5].toFixed(1)+" s"
+
+document.getElementById("dir").innerText =
+Math.round(latest[6])+"°"
+
+document.getElementById("updated").innerText =
+"Updated: "+new Date(latest[1]).toLocaleString()
+
+drawCharts(time,height,period)
+
+}
+
+function drawCharts(time,height,period){
+
+if(heightChart) heightChart.destroy()
+if(periodChart) periodChart.destroy()
+
+heightChart = new Chart(
+document.getElementById("heightChart"),
+{
+type:"line",
+data:{
+labels:time,
+datasets:[{
+label:"Sig Wave Height (m)",
+data:height,
+tension:0.3
+}]
+},
+options:{
+responsive:true,
+plugins:{legend:{display:false}},
+scales:{x:{display:false}}
+}
+})
+
+periodChart = new Chart(
+document.getElementById("periodChart"),
+{
+type:"line",
+data:{
+labels:time,
+datasets:[{
+label:"Sig Wave Period (s)",
+data:period,
+tension:0.3
+}]
+},
+options:{
+responsive:true,
+plugins:{legend:{display:false}},
+scales:{x:{display:false}}
+}
+})
+
+}
+
+function enableFullscreen(containerId){
+
+const container = document.getElementById(containerId)
+
+container.addEventListener("click", ()=>{
+
+if(container.classList.contains("fullscreen")){
+container.classList.remove("fullscreen")
+}
+else{
+container.classList.add("fullscreen")
+}
+
+})
+
+}
+
+enableFullscreen("heightContainer")
+enableFullscreen("periodContainer")
+
+buoySelect.addEventListener("change",loadData)
+
+loadData()
+
+setInterval(loadData,600000)
+
+</script>
+
+</body>
+</html>
